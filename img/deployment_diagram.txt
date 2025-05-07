@@ -1,0 +1,82 @@
+@startuml
+title Deployment Diagram: Producer -> Kafka -> DB -> User (Auth with Keycloak)
+
+actor "Produttore" as producer
+actor "User" as user
+
+' --- Client Web del Produttore
+node "Dispositivo Mobile" {
+    artifact "Browser Web (Produttore)"
+}
+
+node "CDN (Produttore)" {
+    artifact "Contenuti statici\n(Web App Invio)"
+}
+
+node "Kubernetes Cluster (Produttore)" {
+    node "Pod Spring Boot (Produttore)" {
+        artifact "Servizio Invio Eventi"
+        artifact "Kafka Producer SDK"
+    }
+    component "Service Kubernetes\n(Produttore)"
+}
+
+' --- Kafka Cluster
+node "Kafka Cluster" {
+    node "Broker Kafka 1"
+    node "Broker Kafka 2"
+    node "Broker Kafka 3"
+}
+
+' --- Keycloak (Auth Server)
+node "Keycloak Server" {
+    artifact "Keycloak\n(Identity Provider)"
+}
+
+' --- Client Web dell'User
+node "Laptop/Desktop" {
+    artifact "Browser Web (User)"
+}
+
+node "CDN (User)" {
+    artifact "Contenuti statici\n(Dashboard Web)"
+}
+
+node "Kubernetes Cluster (User)" {
+    node "Pod Spring Boot (User)" {
+        artifact "Servizio Lettura Dati"
+        artifact "API REST / WebSocket protetti"
+        artifact "Validazione token JWT"
+    }
+    component "Service Kubernetes\n(User)"
+
+    node "Pod Worker Kafka -> DB" {
+        artifact "Kafka Consumer Worker"
+    }
+
+    database "Database" {
+        artifact "Es. PostgreSQL"
+    }
+
+    "Pod Worker Kafka -> DB" --> "Kafka Cluster" : Consume eventi
+    "Pod Worker Kafka -> DB" --> "Database" : Inserimento dati
+
+    "Pod Spring Boot (User)" --> "Database" : Query dati
+}
+
+' --- Flussi Produttore
+producer --> "Browser Web (Produttore)" : Interazione utente
+"Browser Web (Produttore)" --> "CDN (Produttore)" : HTTP contenuti statici
+"Browser Web (Produttore)" --> "Service Kubernetes\n(Produttore)" : HTTP richiesta dati
+"Service Kubernetes\n(Produttore)" --> "Pod Spring Boot (Produttore)" : Forward interno
+"Pod Spring Boot (Produttore)" --> "Kafka Cluster" : Produce evento Kafka
+
+' --- Flussi User + Keycloak
+user --> "Browser Web (User)" : Interazione utente
+"Browser Web (User)" --> "CDN (User)" : HTTP contenuti statici
+"Browser Web (User)" --> "Keycloak Server" : Login + Token
+"Browser Web (User)" --> "Service Kubernetes\n(User)" : HTTP/WS con Bearer token
+"Service Kubernetes\n(User)" --> "Pod Spring Boot (User)" : Forward interno
+"Pod Spring Boot (User)" --> "Keycloak Server" : Validazione token JWT
+
+@enduml

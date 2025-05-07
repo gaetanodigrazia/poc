@@ -1,0 +1,128 @@
+
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    depends_on:
+      - kafka
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: kafka:9092
+      JVM_OPTS: "-Xms32M -Xmx64M"
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.3.0
+    depends_on:
+      - kafka
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: zookeeper:2181
+      CONTROL_CENTER_CONNECT_CLUSTER: kafka:9092
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      PORT: 9021
+
+  db:
+    image: mysql:8
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  pocmobile:
+    build:
+      context: ./pocMobile
+      dockerfile: Dockerfile
+    container_name: streamlit-frontend
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      - pocdataretrieval
+  pocdashboard:
+    build:
+      context: ./pocDashboard
+      dockerfile: Dockerfile
+    container_name: streamlit-dashboard
+    ports:
+      - "127.0.0.1:8502:8501"
+    depends_on:
+      - pocdataretrieval
+  pocbookingproducer:
+    build:
+      context: ./pocBookingProducer
+      dockerfile: Dockerfile
+    container_name: kafka-producer-app
+    ports:
+      - "8084:8084"
+    depends_on:
+      - kafka
+
+  pocbookingconsumer:
+    build:
+      context: ./pocBookingConsumer
+      dockerfile: Dockerfile
+    container_name: kafka-consumer-app
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/poc
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    depends_on:
+      - kafka
+      - db
+
+  pocdataretrieval:
+    build:
+      context: ./pocDataRetrieval
+      dockerfile: Dockerfile
+    container_name: data-retrieval-app
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/poc
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  db_data:
+
+networks:
+  default:
+    name: kafka-net
