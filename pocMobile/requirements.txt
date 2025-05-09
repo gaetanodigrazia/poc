@@ -1,8 +1,0 @@
-streamlit
-requests
-pandas
-numpy
-opencv-python-headless
-Pillow
-matplotlib
-fpdf
